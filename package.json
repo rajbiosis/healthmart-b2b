@@ -1,0 +1,16 @@
+{
+  "name": "healthmart-b2b",
+  "version": "0.1.0",
+  "private": true,
+  "description": "B2B discovery and lead-generation marketplace for healthcare and diagnostics",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/api.test.js",
+    "create-admin": "node scripts/create-admin.js"
+  },
+  "license": "UNLICENSED"
+}

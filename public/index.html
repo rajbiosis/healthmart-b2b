@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HealthMart B2B: Diagnostics और Healthcare Products</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header>
+    <h1>HealthMart B2B</h1>
+    <p>Diagnostics और healthcare products खोजें, या अपनी requirement भेजें। सही suppliers तक आपकी request पहुँचेगी।</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>Product खोजें</h2>
+      <form id="search-form">
+        <input name="q" placeholder="जैसे: HbA1c kit, centrifuge" maxlength="100">
+        <select name="category_id" id="category-select"><option value="">सभी categories</option></select>
+        <input name="city" placeholder="शहर (वैकल्पिक)" maxlength="100">
+        <button type="submit">खोजें</button>
+      </form>
+      <ul id="results" class="cards"></ul>
+    </section>
+
+    <section>
+      <h2>Requirement भेजें (मुफ़्त)</h2>
+      <form id="enquiry-form">
+        <input name="buyer_name" placeholder="आपका नाम" required maxlength="100">
+        <input name="buyer_phone" placeholder="मोबाइल (10 अंक)" required pattern="[6-9][0-9]{9}">
+        <input name="buyer_email" type="email" placeholder="ईमेल (वैकल्पिक)" maxlength="254">
+        <input name="buyer_city" placeholder="शहर" required maxlength="100">
+        <select name="category_id" id="enquiry-category" required></select>
+        <input name="product_query" placeholder="कौन सा product चाहिए" required minlength="3" maxlength="200">
+        <input name="quantity" type="number" min="1" placeholder="मात्रा (वैकल्पिक)">
+        <textarea name="message" placeholder="अतिरिक्त जानकारी" maxlength="1000"></textarea>
+        <label>
+          <input type="checkbox" name="consent" required>
+          मैं सहमत हूँ कि मेरा नाम और संपर्क इस requirement से जुड़े suppliers के साथ साझा किया जाए।
+        </label>
+        <button type="submit">Requirement भेजें</button>
+        <p id="enquiry-status" role="status"></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
