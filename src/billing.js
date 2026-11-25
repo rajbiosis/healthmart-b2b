@@ -1,6 +1,22 @@
 import { HttpError, oneOf, str } from './util.js';
 import { audit, withTx } from './db.js';
 
+export function freePeriodEndsAt(db) {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'free_period_ends_at'").get();
+  return row ? new Date(row.value) : null;
+}
+
+/**
+ * During the launch period every lead is free: no plan, no quota, no listing limit beyond an abuse guard.
+ * After it ends, the paid model applies automatically with no manual switch.
+ */
+export function isFreePeriod(db, now = Date.now()) {
+  const until = freePeriodEndsAt(db);
+  return Boolean(until && now < until.getTime());
+}
+
+export const FREE_PERIOD_LISTING_CAP = 100;
+
 export function listPlans(db) {
   return db
     .prepare('SELECT code, name, price_paise, lead_quota, listing_limit, duration_days FROM plans ORDER BY price_paise')

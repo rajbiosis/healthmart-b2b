@@ -51,3 +51,7 @@ export function getSessionUser(db, token, now = Date.now()) {
 export function deleteSession(db, token) {
   if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha256(token));
 }
+
+export function revokeOtherSessions(db, userId, keepToken) {
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?').run(userId, sha256(keepToken ?? ''));
+}

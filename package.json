@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/api.test.js",
+    "test": "node --test test/*.test.js",
     "create-admin": "node scripts/create-admin.js"
   },
   "license": "UNLICENSED"

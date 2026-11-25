@@ -47,6 +47,8 @@ function categoryId(name) {
 
 before(async () => {
   db = openDb(':memory:');
+  // These tests cover the paid model, so end the launch free period first.
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'free_period_ends_at'").run(new Date(0).toISOString());
   db.prepare("INSERT INTO users(name,email,phone,password_hash,role) VALUES ('Admin','admin@example.com','9999999999',?,'admin')").run(
     hashPassword('admin-password-1'),
   );

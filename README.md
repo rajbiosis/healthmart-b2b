@@ -25,24 +25,41 @@ ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='at-least-10-chars' npm run create-ad
 
 | Method | Path | Who | Purpose |
 |---|---|---|---|
-| POST | `/api/auth/register` | public | Register buyer or seller (seller also sends company details) |
-| POST | `/api/auth/login` | public | Login, sets session cookie |
-| POST | `/api/auth/logout` | any | Logout |
-| GET | `/api/categories`, `/api/plans` | public | Reference data |
-| GET | `/api/search?q=&city=&category_id=` | public | Live product cards |
-| POST | `/api/enquiries` | public | Buyer requirement (requires `consent: true`) |
-| GET | `/api/seller/company` | seller | Company profile and status |
-| POST / GET | `/api/seller/listings` | seller | Create and list products |
-| GET | `/api/seller/leads` | seller | Lead inbox (masked until unlocked) |
-| POST | `/api/seller/leads/:id/unlock` | seller | Reveal contact, consume one quota |
-| PATCH | `/api/seller/leads/:id` | seller | Set `contacted`, `converted` or `lost` |
-| GET | `/api/seller/subscription` | seller | Active plan and quota usage |
-| POST | `/api/seller/orders` | seller | Create a plan order |
-| GET | `/api/admin/companies?status=pending` | admin | Verification queue |
-| POST | `/api/admin/companies/:id/status` | admin | `verified`, `rejected` or `suspended` |
-| GET | `/api/admin/listings?status=pending` | admin | Listing approval queue |
-| POST | `/api/admin/listings/:id/status` | admin | `live`, `rejected` or `paused` |
+| POST | `/api/auth/register` | public | Sign up as `buyer`, `distributor` or `seller` |
+| POST | `/api/auth/login`, `/logout` | any | Session cookie |
+| POST | `/api/auth/change-password` | logged in | Changes password, signs out other sessions |
+| GET | `/api/me` | logged in | Current user |
+| GET | `/api/me/enquiries` | buyer, distributor | Own requirements and supplier reach |
+| GET | `/api/program` | public | Free period status and end date |
+| GET | `/api/search` | public | Live product cards with photo URL |
+| POST | `/api/enquiries` | public (or logged-in buyer) | Requirement; needs `consent: true` |
+| GET | `/api/seller/company` | seller, member | Company and the caller's permissions |
+| GET, POST | `/api/seller/listings` | member with `listings:manage` | List and create products |
+| PATCH | `/api/seller/listings/:id` | `listings:manage` | Edit; live listings go back to review |
+| POST | `/api/seller/listings/:id/pause`, `/resume` | `listings:manage` | Pause or resume without review |
+| POST | `/api/seller/listings/:id/images` | `listings:manage` | Add photo (`image` data URL) |
+| DELETE | `/api/seller/listings/:id/images/:imageId` | `listings:manage` | Remove photo |
+| GET | `/api/seller/leads?status=` | `leads:view` | Lead inbox (masked until unlocked) |
+| POST | `/api/seller/leads/:id/unlock` | `leads:unlock` | Reveal contact (free in launch period) |
+| PATCH | `/api/seller/leads/:id` | `leads:update` | `contacted`, `converted`, `lost` |
+| GET | `/api/seller/subscription` | `leads:view` | Free period status and plan usage |
+| POST | `/api/seller/orders` | `billing:manage` | Buy a plan |
+| GET, POST | `/api/seller/team` | `team:manage` | List and add team members |
+| PATCH, DELETE | `/api/seller/team/:userId` | `team:manage` | Change permissions or remove |
+| GET, POST | `/api/seller/api-keys` | `integrations:manage` | CRM API keys (full key shown once) |
+| DELETE | `/api/seller/api-keys/:id` | `integrations:manage` | Revoke key |
+| GET, POST | `/api/seller/webhooks` | `integrations:manage` | Register webhook (secret shown once) |
+| DELETE | `/api/seller/webhooks/:id` | `integrations:manage` | Remove webhook |
+| GET | `/api/v1/leads`, `/api/v1/leads/:id` | API key | CRM: fetch leads |
+| POST | `/api/v1/leads/:id/unlock` | API key | CRM: unlock a lead |
+| PATCH | `/api/v1/leads/:id` | API key | CRM: update lead status |
+| GET | `/api/admin/companies`, `/api/admin/listings` | admin | Review queues |
+| POST | `/api/admin/companies/:id/status` | admin | `verified`, `rejected`, `suspended` |
+| POST | `/api/admin/listings/:id/status` | admin | `live`, `rejected`, `paused` |
 | POST | `/api/admin/orders/:id/confirm` | admin | Confirm payment and activate plan |
+
+CRM calls send `Authorization: Bearer hm_live_...`. Webhooks are signed with
+`X-HealthMart-Signature: sha256=<hmac of "timestamp.body">` using the secret from registration.
 
 Mutating requests must send `Content-Type: application/json`.
 
@@ -51,6 +68,8 @@ Mutating requests must send `Content-Type: application/json`.
 - Passwords use scrypt with a random salt. Session tokens are random and stored only as SHA-256 hashes.
 - Cookies are HttpOnly and SameSite=Lax. Login and enquiry endpoints are rate-limited.
 - Buyer contact data never appears in public responses. Sellers see it only after unlock.
+- Team members get only the permissions the owner grants. Every seller route checks them.
+- Photos are checked by file signature; SVG and other types are refused.
 - Run behind a reverse proxy with HTTPS in production. Rate limits are in memory, so use a shared store when running more than one instance.
 
 ## Layout
