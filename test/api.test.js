@@ -41,6 +41,10 @@ function sellerPayload(suffix, city = 'Delhi') {
   };
 }
 
+function verifyDb(email) {
+  db.prepare("UPDATE users SET email_verified_at = datetime('now') WHERE email = ?").run(email);
+}
+
 function categoryId(name) {
   return db.prepare('SELECT id FROM categories WHERE name = ?').get(name).id;
 }
@@ -96,6 +100,7 @@ test('login fails with wrong password and succeeds with right one', async () => 
 test('full lead-generation flow: verify, list, approve, enquire, unlock, quota', async () => {
   // Seller registers and is pending.
   const reg = await call('POST', '/api/auth/register', { body: sellerPayload('01') });
+  verifyDb('seller01@example.com');
   assert.equal(reg.status, 201);
   const sellerCookie = reg.cookie;
   const admin = await call('POST', '/api/auth/login', { body: { email: 'admin@example.com', password: 'admin-password-1' } });
@@ -194,13 +199,15 @@ test('full lead-generation flow: verify, list, approve, enquire, unlock, quota',
   const bogus = await call('PATCH', `/api/seller/leads/${masked.id}`, { cookie: sellerCookie, body: { status: 'deleted' } });
   assert.equal(bogus.status, 422);
 
-  // Outbox: one verification email + one lead alert (the pre-plan enquiry alerted nobody).
-  const { count } = db.prepare("SELECT COUNT(*) AS count FROM outbox WHERE channel = 'email'").get();
-  assert.equal(count, 2);
+  // Outbox for this seller: verification email, company-verified notice, and one lead alert.
+  // The pre-plan enquiry alerted nobody.
+  const { count } = db.prepare("SELECT COUNT(*) AS count FROM outbox WHERE channel = 'email' AND recipient = 'seller01@example.com'").get();
+  assert.equal(count, 3);
 });
 
 test('quota exhaustion blocks unlocking', async () => {
   const reg = await call('POST', '/api/auth/register', { body: sellerPayload('02', 'Mumbai') });
+  verifyDb('seller02@example.com');
   const cookie = reg.cookie;
   const adminCookie = (await call('POST', '/api/auth/login', { body: { email: 'admin@example.com', password: 'admin-password-1' } })).cookie;
   const company = db.prepare("SELECT id FROM companies WHERE gst_number LIKE '%F1Z5' AND owner_user_id = (SELECT id FROM users WHERE email='seller02@example.com')").get();

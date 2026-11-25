@@ -35,7 +35,7 @@ export function getSessionUser(db, token, now = Date.now()) {
   const hashed = sha256(token);
   const row = db
     .prepare(
-      `SELECT u.id, u.name, u.email, u.role, s.expires_at
+      `SELECT u.id, u.name, u.email, u.role, u.email_verified_at, s.expires_at
          FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?`,
     )
@@ -45,7 +45,13 @@ export function getSessionUser(db, token, now = Date.now()) {
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashed);
     return null;
   }
-  return { id: row.id, name: row.name, email: row.email, role: row.role };
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    email_verified_at: row.email_verified_at,
+  };
 }
 
 export function deleteSession(db, token) {

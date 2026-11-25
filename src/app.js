@@ -42,6 +42,24 @@ import {
   revokeApiKey,
 } from './integrations.js';
 import { readImage } from './media.js';
+
+import { listProviders, getPaymentProvider } from './payments.js';
+import {
+  requestPasswordReset,
+  resendVerification,
+  resetPassword,
+  sendVerification,
+  verifyEmail,
+} from './accounts.js';
+import {
+  acceptInvite,
+  createEmailInvites,
+  createLinkInvite,
+  listInvites,
+  previewInvite,
+  resendInvite,
+  revokeInvite,
+} from './invites.js';
 import {
   DATE_RE,
   GST_RE,
@@ -132,10 +150,13 @@ export function createApp({
   db,
   secureCookies = false,
   uploadDir = './data/uploads',
+  appUrl = process.env.APP_URL ?? 'http://localhost:3000',
   enquiryMax = 5,
   loginMax = 10,
+  resetMax = 5,
 } = {}) {
   const enquiryLimit = createRateLimiter({ windowMs: 10 * 60_000, max: enquiryMax });
+  const resetLimit = createRateLimiter({ windowMs: 15 * 60_000, max: resetMax });
   const loginLimit = createRateLimiter({ windowMs: 15 * 60_000, max: loginMax });
   const publicDir = path.join(here, '..', 'public');
   const indexHtml = readFileSync(path.join(publicDir, 'index.html'));
@@ -184,10 +205,11 @@ export function createApp({
       }
       return id;
     });
+    sendVerification(db, appUrl, { id: userId, name, email });
     const session = createSession(db, userId);
     return {
       status: 201,
-      body: { user: { id: userId, name, email, role } },
+      body: { user: { id: userId, name, email, role, email_verified_at: null } },
       headers: { 'set-cookie': sessionCookie(session.token, SESSION_HOURS * 3600) },
     };
   }
@@ -205,7 +227,9 @@ export function createApp({
     }
     const session = createSession(db, user.id);
     return {
-      body: { user: { id: user.id, name: user.name, email: user.email, role: user.role } },
+      body: {
+        user: { id: user.id, name: user.name, email: user.email, role: user.role, email_verified_at: user.email_verified_at },
+      },
       headers: { 'set-cookie': sessionCookie(session.token, SESSION_HOURS * 3600) },
     };
   }
@@ -234,6 +258,39 @@ export function createApp({
 
   async function buyerEnquiries(ctx) {
     return { body: { enquiries: listUserEnquiries(db, ctx.user.id) } };
+  }
+
+  // ---- Verification, password reset, invite join ------------------------
+  async function verifyEmailHandler(ctx) {
+    return { body: verifyEmail(db, ctx.body.token) };
+  }
+
+  async function resendVerificationHandler(ctx) {
+    const row = { id: ctx.user.id };
+    return { body: resendVerification(db, appUrl, row) };
+  }
+
+  async function forgotPasswordHandler(ctx) {
+    if (!resetLimit(ctx.ip)) throw new HttpError(429, 'बहुत सारे requests, थोड़ी देर बाद प्रयास करें');
+    const email = parseEmail(ctx.body.email);
+    return { body: requestPasswordReset(db, appUrl, email) };
+  }
+
+  async function resetPasswordHandler(ctx) {
+    return { body: resetPassword(db, ctx.body.token, ctx.body.new_password) };
+  }
+
+  async function invitePreviewHandler(ctx) {
+    return { body: previewInvite(db, ctx.query.get('token') ?? '') };
+  }
+
+  async function acceptInviteHandler(ctx) {
+    const out = acceptInvite(db, appUrl, ctx.body);
+    return {
+      status: 201,
+      body: { user: out.user },
+      headers: { 'set-cookie': sessionCookie(out.token, SESSION_HOURS * 3600) },
+    };
   }
 
   // ---- Public ------------------------------------------------------------
@@ -354,7 +411,9 @@ export function createApp({
 
   async function orderCreate(ctx) {
     const { company } = access(ctx, 'billing:manage');
-    return { status: 201, body: createPaymentOrder(db, company, ctx.body) };
+    const order = createPaymentOrder(db, company, ctx.body);
+    const checkout = await getPaymentProvider().checkout(order);
+    return { status: 201, body: { ...order, checkout } };
   }
 
   async function teamGet(ctx) {
@@ -405,6 +464,37 @@ export function createApp({
   async function webhookDelete(ctx) {
     const { company } = access(ctx, 'integrations:manage');
     return { body: deleteWebhook(db, company.id, ctx.user.id, parseId(ctx.params.id)) };
+  }
+
+  async function invitesGet(ctx) {
+    const { company } = access(ctx, 'team:manage');
+    return { body: { invites: listInvites(db, company.id) } };
+  }
+
+  async function inviteEmails(ctx) {
+    const { company } = access(ctx, 'team:manage');
+    return { status: 201, body: createEmailInvites(db, appUrl, company.id, ctx.user.id, ctx.body) };
+  }
+
+  async function inviteLink(ctx) {
+    const { company } = access(ctx, 'team:manage');
+    return { status: 201, body: createLinkInvite(db, appUrl, company.id, ctx.user.id, ctx.body) };
+  }
+
+  async function inviteRevoke(ctx) {
+    const { company } = access(ctx, 'team:manage');
+    return { body: revokeInvite(db, company.id, ctx.user.id, parseId(ctx.params.id)) };
+  }
+
+  async function inviteResend(ctx) {
+    const { company } = access(ctx, 'team:manage');
+    return { body: resendInvite(db, appUrl, company.id, ctx.user.id, parseId(ctx.params.id)) };
+  }
+
+  async function paymentWebhook(ctx) {
+    // Online gateways are off until launch. The route exists so the gateway can be wired in later.
+    getPaymentProvider(ctx.params.provider);
+    throw new HttpError(501, 'Payment webhook अभी चालू नहीं है');
   }
 
   // ---- CRM API (Bearer API key) ------------------------------------------
@@ -465,7 +555,7 @@ export function createApp({
   }
 
   async function plansGet() {
-    return { body: { plans: listPlans(db) } };
+    return { body: { plans: listPlans(db), payment_providers: listProviders() } };
   }
 
   // ---- Routing ------------------------------------------------------------
@@ -482,6 +572,13 @@ export function createApp({
     ['POST', '/api/auth/login', login, PUBLIC],
     ['POST', '/api/auth/logout', logout, PUBLIC],
     ['POST', '/api/auth/change-password', changePassword, USER],
+    ['POST', '/api/auth/verify-email', verifyEmailHandler, PUBLIC],
+    ['POST', '/api/auth/resend-verification', resendVerificationHandler, USER],
+    ['POST', '/api/auth/forgot-password', forgotPasswordHandler, PUBLIC],
+    ['POST', '/api/auth/reset-password', resetPasswordHandler, PUBLIC],
+    ['GET', '/api/invites/preview', invitePreviewHandler, PUBLIC],
+    ['POST', '/api/auth/accept-invite', acceptInviteHandler, PUBLIC],
+    ['POST', '/api/payments/webhook/:provider', paymentWebhook, PUBLIC],
     ['GET', '/api/me', me, USER],
     ['GET', '/api/me/enquiries', buyerEnquiries, USER, BUYERS],
     ['GET', '/api/program', program, PUBLIC],
@@ -507,6 +604,11 @@ export function createApp({
     ['POST', '/api/seller/team', teamAdd, USER, COMPANY],
     ['PATCH', '/api/seller/team/:userId', teamUpdate, USER, COMPANY],
     ['DELETE', '/api/seller/team/:userId', teamRemove, USER, COMPANY],
+    ['GET', '/api/seller/invites', invitesGet, USER, COMPANY],
+    ['POST', '/api/seller/invites', inviteEmails, USER, COMPANY],
+    ['POST', '/api/seller/invites/link', inviteLink, USER, COMPANY],
+    ['DELETE', '/api/seller/invites/:id', inviteRevoke, USER, COMPANY],
+    ['POST', '/api/seller/invites/:id/resend', inviteResend, USER, COMPANY],
     ['GET', '/api/seller/api-keys', apiKeysGet, USER, COMPANY],
     ['POST', '/api/seller/api-keys', apiKeyCreate, USER, COMPANY],
     ['DELETE', '/api/seller/api-keys/:id', apiKeyRevoke, USER, COMPANY],
@@ -524,7 +626,10 @@ export function createApp({
     ['GET', '/api/admin/listings', adminListings, USER, ADMIN],
     ['POST', '/api/admin/listings/:id/status', adminListingStatus, USER, ADMIN],
     ['POST', '/api/admin/orders/:id/confirm', adminConfirmOrder, USER, ADMIN],
-  ].map(([method, pattern, fn, auth, roles]) => ({ method, fn, auth, roles, ...compile(pattern) }));
+  ].map(([method, pattern, fn, auth, roles]) => ({ method, pattern, fn, auth, roles, ...compile(pattern) }));
+
+  // Company routes need a verified email, except the ones that show status and let the user verify.
+  const UNVERIFIED_OK = new Set(['/api/seller/company']);
 
   function findRoute(method, pathname) {
     for (const r of ROUTES) {
@@ -583,6 +688,12 @@ export function createApp({
         if (route.roles && !route.roles.includes(ctx.user?.role)) {
           throw new HttpError(ctx.user ? 403 : 401, ctx.user ? 'Access नहीं है' : 'Login आवश्यक है');
         }
+        const isCompanyRoute = route.roles?.some((r) => COMPANY.includes(r));
+        if (isCompanyRoute && !ctx.user.email_verified_at && !UNVERIFIED_OK.has(route.pattern)) {
+          const err = new HttpError(403, 'पहले अपना email verify करें');
+          err.code = 'EMAIL_NOT_VERIFIED';
+          throw err;
+        }
       }
 
       if (req.method !== 'GET') {
@@ -596,7 +707,7 @@ export function createApp({
       const result = (await route.fn(ctx)) ?? {};
       return json(res, result.status ?? 200, result.body ?? {}, result.headers ?? {});
     } catch (err) {
-      if (err instanceof HttpError) return json(res, err.status, { error: err.message });
+      if (err instanceof HttpError) return json(res, err.status, { error: err.message, code: err.code ?? undefined });
       console.error(err);
       return json(res, 500, { error: 'Internal error' });
     }

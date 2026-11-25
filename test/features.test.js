@@ -60,6 +60,7 @@ const catId = (name) => db.prepare('SELECT id FROM categories WHERE name = ?').g
 
 async function verifiedSellerWithLiveListing(adminCookie, name, title, category = 'Diagnostic Kits') {
   const reg = await call('POST', '/api/auth/register', { body: sellerBody(name) });
+  db.prepare("UPDATE users SET email_verified_at = datetime('now') WHERE email = ?").run(`${name.toLowerCase()}@example.com`);
   const company = db
     .prepare('SELECT c.id FROM companies c JOIN users u ON u.id = c.owner_user_id WHERE u.email = ?')
     .get(`${name.toLowerCase()}@example.com`);

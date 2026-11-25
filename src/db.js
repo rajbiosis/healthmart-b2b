@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('buyer','distributor','seller','company_member','admin')),
+  email_verified_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -107,8 +108,33 @@ CREATE TABLE IF NOT EXISTS outbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   channel TEXT NOT NULL CHECK (channel IN ('email','sms','whatsapp')),
   recipient TEXT NOT NULL,
+  subject TEXT NOT NULL DEFAULT '',
   body TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','sent','failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS one_time_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL CHECK (purpose IN ('verify_email','reset_password')),
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL,
+  used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS team_invites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  email TEXT,
+  name TEXT,
+  permissions TEXT NOT NULL DEFAULT '[]',
+  token_hash TEXT NOT NULL UNIQUE,
+  invited_by INTEGER REFERENCES users(id),
+  expires_at INTEGER NOT NULL,
+  max_uses INTEGER,
+  used_count INTEGER NOT NULL DEFAULT 0,
+  revoked_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS company_members (
@@ -239,6 +265,6 @@ export function audit(db, actorUserId, action, entity, entityId) {
 }
 
 /** Notifications are queued here; a sender worker (Phase 2) delivers them. */
-export function queueMessage(db, channel, recipient, body) {
-  db.prepare('INSERT INTO outbox(channel,recipient,body) VALUES (?,?,?)').run(channel, recipient, body);
+export function queueMessage(db, channel, recipient, body, subject = 'HealthMart B2B') {
+  db.prepare('INSERT INTO outbox(channel,recipient,subject,body) VALUES (?,?,?,?)').run(channel, recipient, subject, body);
 }

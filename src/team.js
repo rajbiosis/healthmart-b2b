@@ -30,7 +30,7 @@ export function addMember(db, actorUserId, companyId, input) {
   return withTx(db, () => {
     const userId = Number(
       db
-        .prepare("INSERT INTO users(name,email,phone,password_hash,role) VALUES (?,?,?,?,'company_member')")
+        .prepare("INSERT INTO users(name,email,phone,password_hash,role,email_verified_at) VALUES (?,?,?,?,'company_member',datetime('now'))")
         .run(name, email, phone, hashPassword(password)).lastInsertRowid,
     );
     db.prepare('INSERT INTO company_members(company_id,user_id,permissions) VALUES (?,?,?)').run(
